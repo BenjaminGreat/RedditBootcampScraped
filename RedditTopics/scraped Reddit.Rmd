@@ -1,0 +1,112 @@
+---
+title: "ScrapedReddit"
+author: "Ben"
+date: "October 25, 2017"
+output: html_document
+---
+
+```{r}
+## Load relevant packages 
+library(NLP)
+library(SnowballC)
+library(tm)
+library(wordcloud)
+library(tidytext)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(topicmodels)
+library(tidytext)
+
+
+```
+
+
+```{r}
+##Create and Clean Corpus. Eliminate all irrelevant data from documents (unrelated information to potential topics)
+
+docs<-Corpus(VectorSource(c(reddit)))
+
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, "/")
+docs <- tm_map(docs, toSpace, "\\|")
+docs <- tm_map(docs, content_transformer(tolower))
+docs <- tm_map(docs, removeNumbers)
+docs <- tm_map(docs, removeWords, stopwords("english"))
+docs <- tm_map(docs, removeWords, c("student", "students", "will","grade","course","final","fall","summer","spring","incomplete","project","email"))
+docs <- tm_map(docs, removeWords, c("the","a","how","when", "where", "it", "an", "whose", "and","are", "at", "as", "be", "by", "for", "from", "has","p","like","get","also",'good','much','want','really','work','people','just','even'))
+docs <- tm_map(docs, removeWords, c("in", "is", "its", "of", "on", "that", "was", "were", "will", "with", "whom", "but", "or","to"))
+docs <- tm_map(docs, removeWords, c("about", "am" ,"any", "aren't", "at","because", "both", "can't", "couldn't", "did", "didn't", "do", "does","doesn't","doing",'one'))
+docs <- tm_map(docs, removeWords, c("don't, 'have", "had","haven't", "haveing", "how","isn't","its", "of","or","such", "than", "that", "that's","data", "science","can", "now","learning","look","lot", "someone","things","learn","going","way","know","well","things","take", "going","need","time","think", "skills", "better", "getting", "got","big", "see", "sure", "first", "great","right", "something", "help", "make","looking","find","might","new","two", "bootcamp","say","start", "program","school", "working","trying", "bit","thanks", "interested", "etc","many","degree","scientist","best","start","started","use", "part","pretty", "still", "able","scientists","currently","may"))
+
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, stripWhitespace)
+
+```
+
+```{r}
+
+wordcloud(docs, scale=c(5,0.5))
+
+
+```
+
+```{r}
+
+##Create and Prepare Term Document Matrix for the algorithm  
+
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+dtm <- DocumentTermMatrix(docs)
+
+
+rowTotals <- apply(dtm , 1, sum) #Find the sum of words in each Document
+dtm.new   <- dtm[rowTotals> 0, ] 
+m <- as.matrix(dtm.new)
+
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+
+
+```
+
+
+
+```{r}
+
+##Select number of topics (K)
+##Apply Latent Dirichlet Allocation.
+##Convert term frequencies into probability distributions.
+##These distributions each represent various topics contained in the documents within the Corpus. 
+
+ap_lda <- LDA(m, k = 2, control = list(seed = 123))
+terms(ap_lda)
+topics(ap_lda)
+
+
+```
+
+
+```{r}
+##Visualization and Frequency Fun!
+
+ap_topics <- tidy(ap_lda, matrix = "beta")
+
+
+ap_top_terms <- ap_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+ap_top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip()                 
+
+findFreqTerms(dtm.new, lowfreq = 100)
+
+```
+
